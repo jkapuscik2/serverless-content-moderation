@@ -1,5 +1,6 @@
 import json
 import os
+from urllib.parse import unquote_plus
 
 import boto3
 
@@ -13,6 +14,6 @@ def handler(event, ctx):
         stateMachineArn=os.environ['CONTENT_MODERATION_ARN'],
         input=json.dumps({
             "bucketName": record["bucket"]["name"],
-            "objectKey": record["object"]["key"]
+            "objectKey": unquote_plus(record["object"]["key"])
         }),
     )

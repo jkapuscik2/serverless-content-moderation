@@ -11,7 +11,7 @@ Globals:
 Parameters:
   BucketName:
     Type: String
-    Default: serverless-demo-bucket-1234
+    Default: content-moderation-demo-1234
   DynamoDbTableName:
     Type: String
     Default: content
@@ -43,6 +43,39 @@ Resources:
     Properties:
       Handler: functions/validateVideo.handler
       Role: !GetAtt LamdbaIAMRole.Arn
+      Environment:
+        Variables:
+          MODERATION_QUEUE_URL: !Ref VideoModerationQueue
+          TOPIC_ARN: !Ref VideoModerationTopic
+          ROLE_ARN: !GetAtt RekognitionRole.Arn
+
+  VideoModerationQueue:
+    Type: AWS::SQS::Queue
+
+  VideoModerationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+      - Endpoint: !GetAtt VideoModerationQueue.Arn
+        Protocol: "sqs"
+
+  VideoModerationQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: "*"
+          Action:
+          - sqs:SendMessage
+          Resource: "*"
+          Condition:
+            ArnEquals:
+              aws:SourceArn:
+                Ref: VideoModerationTopic
+      Queues:
+      - Ref: VideoModerationQueue
 
   SaveResultFunction:
     Type: AWS::Serverless::Function
@@ -52,6 +85,26 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref DynamoDB
+
+  RekognitionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: rekognition.amazonaws.com
+          Action: "sts:AssumeRole"
+      Policies:
+      - PolicyName: SNS
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+          - Effect: Allow
+            Action:
+            - "*"
+            Resource: !Ref VideoModerationTopic
 
   StatesExecutionRole:
     Type: "AWS::IAM::Role"
@@ -82,18 +135,75 @@ Resources:
         !Sub
       - |-
         {
-          "Comment": "",
-          "StartAt": "HelloWorld",
-          "States": {
-            "HelloWorld": {
-              "Type": "Task",
-              "Resource": "${CheckFileTypeFunctionArn}",
-              "End": true
-            }
-          }
+           "Comment":"Sample content moderation flow",
+           "StartAt":"CheckFileType",
+           "States":{
+              "CheckFileType":{
+                 "Type":"Task",
+                 "Resource":"${CheckFileTypeFunctionArn}",
+                 "Next":"FileType"
+              },
+              "FileType":{
+                 "Type":"Choice",
+                 "Choices":[
+                    {
+                       "Variable":"$.mime",
+                       "StringEquals":"image/jpeg",
+                       "Next":"IMAGE"
+                    },
+                    {
+                       "Variable":"$.mime",
+                       "StringEquals":"image/jpg",
+                       "Next":"IMAGE"
+                    },
+                    {
+                       "Variable":"$.mime",
+                       "StringEquals":"image/png",
+                       "Next":"IMAGE"
+                    },
+                    {
+                       "Variable":"$.mime",
+                       "StringEquals":"video/mp4",
+                       "Next":"VIDEO"
+                    }
+                 ],
+                 "Default":"OTHER"
+              },
+              "OTHER":{
+                 "Type":"Fail",
+                 "Cause":"Invalid file formart"
+              },
+              "IMAGE":{
+                 "Type":"Pass",
+                 "Next":"ValidateImage"
+              },
+             "VIDEO":{
+                 "Type":"Pass",
+                 "Next":"ValidateVideo"
+              },
+              "ValidateImage":{
+                 "Type":"Task",
+                 "Resource":"${ValidateImageFunctionArn}",
+                 "Next":"SaveResult"
+              },
+              "ValidateVideo":{
+                 "Type":"Task",
+                 "Resource":"${ValidateVideoFunctionArn}",
+                 "Next":"SaveResult"
+              },
+             "SaveResult":{
+                 "Type":"Task",
+                 "Resource":"${SaveResultFunctionArn}",
+                 "End":true
+              }
+           }
         }
+
       - {
-        CheckFileTypeFunctionArn: !GetAtt CheckFileTypeFunction.Arn
+        CheckFileTypeFunctionArn: !GetAtt CheckFileTypeFunction.Arn,
+        ValidateImageFunctionArn: !GetAtt ValidateImageFunction.Arn,
+        ValidateVideoFunctionArn: !GetAtt ValidateVideoFunction.Arn,
+        SaveResultFunctionArn: !GetAtt SaveResultFunction.Arn
       }
       RoleArn: !GetAtt StatesExecutionRole.Arn
 
@@ -148,6 +258,8 @@ Resources:
           - Effect: Allow
             Action:
             - rekognition:DetectModerationLabels
+            - rekognition:StartContentModeration
+            - rekognition:GetContentModeration
             Resource: "*"
       - PolicyName: CloudWatch
         PolicyDocument:
@@ -172,6 +284,21 @@ Resources:
             Action:
             - dynamodb:PutItem
             Resource: !GetAtt DynamoDB.Arn
+      - PolicyName: PassRole
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - iam:PassRole
+            Resource: !GetAtt RekognitionRole.Arn
+      - PolicyName: SQS
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - SQS:ReceiveMessage
+            - SQS:DeleteMessage
+            Resource: !GetAtt VideoModerationQueue.Arn
 
   DynamoDB:
     Type: AWS::Serverless::SimpleTable

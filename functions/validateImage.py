@@ -1,25 +1,12 @@
 import json
-import logging
 
 import boto3
 
 from updateMetadata import update_metadata
+from validation import has_unsafe_label
 
 MIN_CONFIDENCE = 75
-REJECTED_CATEGORIES = [
-    "Explicit Nudity",
-    "Violence",
-    "Visually Disturbing"
-]
 rekognition = boto3.client('rekognition')
-
-
-def has_unsafe_label(labels):
-    logging.info(labels)
-    for label in labels:
-        if label["Name"] in REJECTED_CATEGORIES:
-            return True
-    return False
 
 
 def handler(event, ctx):

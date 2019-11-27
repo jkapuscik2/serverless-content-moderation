@@ -2,7 +2,6 @@ from mimetypes import MimeTypes
 
 mime = MimeTypes()
 
-
 def handler(event, ctx):
     mime_type = mime.guess_type(event["objectKey"])
 
