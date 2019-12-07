@@ -4,7 +4,6 @@ import time
 
 import boto3
 
-from updateMetadata import update_metadata
 from validation import has_unsafe_label
 
 MIN_CONFIDENCE = 75
@@ -28,9 +27,6 @@ def handler(event, ctx):
         }
     )
     labels = get_labels(response['JobId'])
-    update_metadata(event["bucketName"],
-                    event["objectKey"],
-                    {"moderation_labels": json.dumps(labels)})
 
     return {
         "isUnsafe": has_unsafe_label(labels),
@@ -94,7 +90,7 @@ def get_results(job_id):
             NextToken=pagination_token
         )
         for label in response['ModerationLabels']:
-            labels.append(label)
+            labels.append(label["ModerationLabel"])
 
         if 'NextToken' in response:
             pagination_token = response['NextToken']

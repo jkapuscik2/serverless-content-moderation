@@ -11,10 +11,10 @@ Globals:
 Parameters:
   BucketName:
     Type: String
-    Default: content-moderation-demo-1234
+    Default: YOUR_BUCKET_NAME
   DynamoDbTableName:
     Type: String
-    Default: content
+    Default: YOUR_DB_TABLE_NAME
 
 Resources:
   ModerateContentFunction:
@@ -43,6 +43,7 @@ Resources:
     Properties:
       Handler: functions/validateVideo.handler
       Role: !GetAtt LamdbaIAMRole.Arn
+      Timeout: 600
       Environment:
         Variables:
           MODERATION_QUEUE_URL: !Ref VideoModerationQueue
@@ -248,9 +249,7 @@ Resources:
           - Effect: Allow
             Action:
             - s3:Get*
-            - s3:Put*
             Resource:
-            - !Sub arn:aws:s3:::${BucketName}
             - !Sub arn:aws:s3:::${BucketName}/*
       - PolicyName: Rekognition
         PolicyDocument:

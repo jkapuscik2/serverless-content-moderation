@@ -1,8 +1,5 @@
-import json
-
 import boto3
 
-from updateMetadata import update_metadata
 from validation import has_unsafe_label
 
 MIN_CONFIDENCE = 75
@@ -19,10 +16,6 @@ def handler(event, ctx):
         },
         MinConfidence=MIN_CONFIDENCE
     )
-
-    update_metadata(event["bucketName"],
-                    event["objectKey"],
-                    {"moderation_labels": json.dumps(response["ModerationLabels"])})
 
     return {
         "isUnsafe": has_unsafe_label(response["ModerationLabels"]),
